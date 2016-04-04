@@ -42,9 +42,18 @@ for x in fs_list_split:
 root_sector = int(fs_dict["*** Root Directory"].split(" - ")[0])
 
 # Get all the allocated sectors from fsstat and translate from sectors to cluster
-allocated_clusters = {to_cluster(root_sector, int(x.split("-")[0])) : fs_dict[x].strip()
-                          for x in fs_dict
-                          if '(8)' in x or '(16)' in x}
+
+allocated_clusters = {}
+for x in fs_dict:
+    if '(8)' in x:
+        allocated_clusters[to_cluster(root_sector, int(x.split("-")[0]))] = fs_dict[x].strip()
+    elif '(16)' in x:
+        middle_sector = int(x.split("-")[0]) + 8
+        middle_cluster = to_cluster(root_sector, middle_sector)
+        allocated_clusters[to_cluster(root_sector, int(x.split("-")[0]))] = middle_sector
+        allocated_clusters[middle_cluster] = fs_dict[x].strip()
+
+print("ALLOC_CLUSTERS", allocated_clusters)
 
 # Grab all the pointers and translate from sectors to cluster
 # This is a list because I will need to sort it in a minute
@@ -55,6 +64,7 @@ allocated_clusters_pointers = [ [x, to_cluster(
                                for x in allocated_clusters
                                if allocated_clusters[x] != "EOF"]
 
+print("ALLOC_POINTERS", allocated_clusters_pointers)
 # We are going to start at the end of each chain and work backwards
 cluster_chains = [[x, "EOF"] for x in allocated_clusters if allocated_clusters[x] == "EOF"]
 
