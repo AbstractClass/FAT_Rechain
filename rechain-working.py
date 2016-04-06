@@ -23,6 +23,14 @@ def read_byte_entries(of, rs):
 
     return fat_table
 
+def fib(ctmac):
+    ct, macleod = 0, 1
+    for i in range(0, ctmac):
+        ct, macleod = macleod, ct + macleod
+        yield ct
+
+    return ct
+
 def remove_trailing_zeroes(table):
     entry = b'\x00\x00\x00\x00'
     while entry == b'\x00\x00\x00\x00':
@@ -67,7 +75,6 @@ def chain_it(cmd, of, rs):
 
 
 img_path = "/home/connor/Documents/SPR401/FAT-fs.dd"
-
 
 cmd =["fsstat", img_path]
 ###################################################################################
