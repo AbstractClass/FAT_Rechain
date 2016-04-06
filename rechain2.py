@@ -41,14 +41,67 @@ for key in fs_attributes:
     except:
         pass
 
-# Craft dd command for FAT table
-bs = str(fs_attributes['Sector Size'])
-skip = str(fs_attributes['* FAT 0'][0])
-count = str(fs_attributes['* FAT 0'][1] - fs_attributes['* FAT 0'][0])
-of = "FAT_Table_0.dd"
+def read_byte_entries(of, rs):
+    fat_table = []
+    with open(of, 'rb') as table:
+        while True:
+            entry = table.read(rs)
+            if entry != b'':
+                fat_table.append(entry[::-1])
+            if not entry:
+                break
 
-cmd = ['dd', 'if='+img_path, 'bs='+bs, 'skip='+skip, 'count='+count, 'of='+of]
-dd = subprocess.Popen(args=cmd)
+    return fat_table
+
+def remove_trailing_zeroes(table):
+    entry = b'\x00\x00\x00\x00'
+    while entry == b'\x00\x00\x00\x00':
+        table.pop()
+        entry = table[-1]
+
+    return table
+
+def get_alloc_clusters(table):
+    alloc_clusters = []
+    for cluster, entry in enumerate(table):
+        if entry == b'\x00\x00\x00\x00':
+            continue
+        elif entry == b'\x0f\xff\xff\xf8' or entry == b'\x0f\xff\xff\xff':
+            value = "EOF"
+        else:
+            value = int.from_bytes(entry, byteorder='big')
+
+        alloc_clusters.append([cluster, value])
+
+    return alloc_clusters
+
+def chain_it(cmd, of, rs):
+    dd = subprocess.Popen(args=cmd)
+    dd.communicate()
+
+    fat_table = read_byte_entries(of, rs)
+
+    fat_table = remove_trailing_zeroes(fat_table)
+
+    alloc_clusters = get_alloc_clusters(fat_table)
+
+    cluster_chains = [x for x in alloc_clusters if x[1] == 'EOF']
+    cluster_pointers = [x for x in alloc_clusters if x[1] != 'EOF']
+
+    for pointer in sorted(cluster_pointers, reverse=True):
+        for n in range(0, len(cluster_chains)):
+            if pointer[1] == cluster_chains[n][0]:
+                cluster_chains[n].insert(0, pointer[0])
+
+    return cluster_chains
+
+def craft_cmd(sector_size, coords, of):
+    bs= str(sector_size)
+    skip = str(coords[0])
+    count = str(coords[1] - coords[0])
+
+    return ['dd', 'if='+img_path, 'bs='+bs, 'skip='+skip, 'count='+count, 'of='+of]
+
 
 if fs_attributes['File System Type Label'] == 'FAT32':
     rs = 4
@@ -59,40 +112,16 @@ else:
     print("read size (rs) is being set to -1 as punishment.")
     rs = -1
 
-fat_table = []
-with open('FAT_Table_0.dd', 'rb') as table:
-    while True:
-        entry = table.read(rs)
-        if entry != b'':
-            fat_table.append(entry[::-1])
-        if not entry:
-            break
+fat_0_of = 'FAT_Table_0.dd'
+fat_0_cmd = craft_cmd(fs_attributes['Sector Size'], fs_attributes['* FAT 0'], fat_0_of)
+fat_0_chain = chain_it(fat_0_cmd, fat_0_of, rs)
 
-entry = b'\x00\x00\x00\x00'
-while entry == b'\x00\x00\x00\x00':
-    fat_table.pop()
-    entry = fat_table[-1]
+fat_1_of = 'FAT_Table_1.dd'
+fat_1_cmd = craft_cmd(fs_attributes['Sector Size'], fs_attributes['* FAT 1'], fat_1_of)
+fat_1_chain = chain_it(fat_1_cmd, fat_1_of, rs)
 
-alloc_clusters = []
-for cluster, entry in enumerate(fat_table):
-    value = "ERROR"
-    if entry == b'\x00\x00\x00\x00':
-        continue
-    elif entry == b'\x0f\xff\xff\xf8' or entry == b'\x0f\xff\xff\xff':
-        value = "EOF"
-    else:
-        value = int.from_bytes(entry, byteorder='big')
-
-    alloc_clusters.append([cluster, value])
-
-cluster_chains = [x for x in alloc_clusters if x[1] == 'EOF']
-cluster_pointers = [x for x in alloc_clusters if x[1] != 'EOF']
-
-for pointer in sorted(cluster_pointers, reverse=True):
-    for n in range(0, len(cluster_chains)):
-        if pointer[1] == cluster_chains[n][0]:
-            cluster_chains[n].insert(0, pointer[0])
-
+print(fat_0_chain)
+print(fat_1_chain)
 # Craft dd command for root directory
 # skip = str(fs_attributes['*** Root Directory'][0])
 # count = str(fs_attributes['*** Root Directory'][1] - fs_attributes['*** Root Directory'][0])
@@ -101,5 +130,3 @@ for pointer in sorted(cluster_pointers, reverse=True):
 
 # dd = subprocess.Popen(args=cmd, stdout=subprocess.PIPE)
 # dd_hex = subprocess.check_output(('hexdump'), stdin=dd.stdout).decode('utf-8')
-
-print(cluster_chains)
