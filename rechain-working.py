@@ -122,14 +122,14 @@ else:
 # Get fat 0 chain
 fat_0_of = 'FAT_Table_0.dd'
 fat_0_cmd = craft_cmd(fs_attributes['Sector Size'], fs_attributes['* FAT 0'], fat_0_of)
-fat_0_chain = chain_it(fat_0_cmd, fat_0_of, rs)
+fat_0_chain = chain_it(fat_0_cmd, fat_0_of, rs)[2:]
 
 # Get fat 1 chain
 fat_1_of = 'FAT_Table_1.dd'
 fat_1_cmd = craft_cmd(fs_attributes['Sector Size'], fs_attributes['* FAT 1'], fat_1_of)
-fat_1_chain = chain_it(fat_1_cmd, fat_1_of, rs)
+fat_1_chain = chain_it(fat_1_cmd, fat_1_of, rs)[2:]
 
-fls = subprocess.check_output(('fls', img_path)).decode('utf-8')
+fls = subprocess.check_output(('fls', '-r',img_path)).decode('utf-8')
 
 fls_clusters = set()
 for n in range(0, len(fls)):
